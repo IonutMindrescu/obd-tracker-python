@@ -1,4 +1,4 @@
-# GTA Bucovina - OBD Tracker Device `#3399ff`
+# GTA Bucovina - [OBD Tracker](https://obd-tracker.vercel.app/)
 
 ## Configuration
 ```python
@@ -11,6 +11,7 @@ LED_BRIGHTNESS = 255
 LED_INVERT = False
 LED_CHANNEL = 0
 RECONNECT_OBD = 30
+WEBSOCKET_URL = "wss://ws.sonny.ro"
 ```
 
 ### Binding rfcomm serial port to OBD
