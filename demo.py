@@ -3,6 +3,7 @@ import websockets
 import json
 import random
 
+
 # Vehicle simulation class
 class VehicleSimulator:
     def __init__(self):
@@ -64,6 +65,7 @@ class VehicleSimulator:
             "MAF": round(self.maf, 2)
         }
 
+
 async def connect_to_obd():
     uri = "wss://ws.sonny.ro"
     simulator = VehicleSimulator()
@@ -77,5 +79,6 @@ async def connect_to_obd():
                 await websocket.send(message)
                 print(f"Sent: {message}")
             await asyncio.sleep(0.5)
+
 
 asyncio.run(connect_to_obd())
