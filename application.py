@@ -1,12 +1,13 @@
-import time
-import random
-import threading
 import asyncio
-import websockets
 import json
-import obd
+import random
 import subprocess
+import threading
+import time
+
+import obd
 import serial
+import websockets
 from rpi_ws281x import PixelStrip, Color
 
 # === Application Configuration ===
@@ -22,10 +23,12 @@ WEBSOCKET_URL = "wss://ws.sonny.ro"
 
 strip = PixelStrip(LED_COUNT, LED_PIN, LED_FREQ_HZ, LED_DMA, LED_INVERT, LED_BRIGHTNESS, LED_CHANNEL)
 strip.begin()
+NUM_PIXELS = strip.numPixels()
 
 # === Globals ===
 current_mode = "chase"
 websocket = None
+
 
 # === OBD-II Handler ===
 async def obd_handler():
@@ -54,6 +57,7 @@ async def obd_handler():
                         }
                         message = json.dumps(data)
                         asyncio.run_coroutine_threadsafe(send_data(message), loop)
+
                 return callback_func
 
             commands = [
@@ -81,6 +85,9 @@ async def obd_handler():
         except Exception as e:
             print(f"Unexpected error: {e}. Retrying in {RECONNECT_OBD} seconds...")
             await asyncio.sleep(RECONNECT_OBD)
+        finally:
+            time.sleep(0.2)  # Keep CPU safe
+
 
 def bind_rfcomm():
     try:
@@ -96,28 +103,31 @@ def bind_rfcomm():
             check=True
         )
         print("rfcomm0 bound successfully.")
-    except subprocess.CalledProcessError as e:
+    except Exception as e:
         print(f"Failed to bind rfcomm: {e}")
+
 
 # === LED Functions ===
 def get_color(speed_ratio):
+    r = 255
+    g = 0
     if speed_ratio < 0.4:
         r = int(speed_ratio / 0.4 * 255)
         g = 255
     elif speed_ratio < 0.8:
         r = 255
         g = int((0.8 - speed_ratio) / 0.4 * 255)
-    else:
-        r = 255
-        g = 0
+
     return Color(r, g, 0)
 
+
 def update_strip_acceleration(ratio):
-    speed_leds = int(ratio * strip.numPixels())
+    speed_leds = int(ratio * NUM_PIXELS)
     color = get_color(ratio)
-    for i in range(strip.numPixels()):
+    for i in range(NUM_PIXELS):
         strip.setPixelColor(i, color if i < speed_leds else Color(0, 0, 0))
     strip.show()
+
 
 def simulate_acceleration():
     speed_ratio = 1.0
@@ -137,15 +147,16 @@ def simulate_acceleration():
             direction *= -1
         time.sleep(random.uniform(0.2, 0.5))
 
+
 def police_lights():
-    half = strip.numPixels() // 2
+    half = NUM_PIXELS // 2
     flash_count = 5
     flash_delay = 0.03
     while current_mode == "police":
         for _ in range(flash_count):
             for i in range(half):
                 strip.setPixelColor(i, Color(255, 0, 0))
-            for i in range(half, strip.numPixels()):
+            for i in range(half, NUM_PIXELS):
                 strip.setPixelColor(i, Color(0, 0, 0))
             strip.show()
             time.sleep(flash_delay)
@@ -154,81 +165,93 @@ def police_lights():
         for _ in range(flash_count):
             for i in range(half):
                 strip.setPixelColor(i, Color(0, 0, 0))
-            for i in range(half, strip.numPixels()):
+            for i in range(half, NUM_PIXELS):
                 strip.setPixelColor(i, Color(0, 0, 255))
             strip.show()
             time.sleep(flash_delay)
             clear_strip()
             time.sleep(flash_delay)
 
+
 def hazard_lights():
     amber = Color(255, 120, 0)
     flash_delay = 0.3
     while current_mode == "hazard":
-        for i in range(strip.numPixels()):
+        for i in range(NUM_PIXELS):
             strip.setPixelColor(i, amber)
         strip.show()
         time.sleep(flash_delay)
         clear_strip()
         time.sleep(flash_delay)
 
+
 def pit_crew_mode():
     color1 = Color(255, 0, 0)
     color2 = Color(255, 255, 255)
     block_size = 3
     blink_state = True
+
     while current_mode == "pit":
-        for i in range(strip.numPixels()):
-            if ((i // block_size) % 2 == 0) == blink_state:
-                strip.setPixelColor(i, color1)
-            else:
-                strip.setPixelColor(i, color2)
+        for i in range(NUM_PIXELS):
+            is_block_on = ((i // block_size) % 2 == 0)
+            strip.setPixelColor(i, color1 if is_block_on == blink_state else color2)
+
         strip.show()
         blink_state = not blink_state
-        time.sleep(0.5)
+        time.sleep(0.05)
+
 
 def chase_mode():
     tail_length = 4
     base_color = Color(0, 0, 255)
     off_color = Color(0, 0, 0)
+
     while current_mode == "chase":
-        for i in range(strip.numPixels() + tail_length):
-            for j in range(strip.numPixels()):
+        for i in range(NUM_PIXELS + tail_length):
+            for j in range(NUM_PIXELS):
                 distance = i - j
                 if 0 <= distance < tail_length:
-                    brightness = int(255 * (1 - (distance / tail_length)))
+                    brightness = int(255 * (1 - distance / tail_length))
                     strip.setPixelColor(j, Color(0, 0, brightness))
                 else:
                     strip.setPixelColor(j, off_color)
+
             strip.show()
             time.sleep(0.05)
+
 
 def off_mode():
     clear_strip()
     while current_mode == "off":
         time.sleep(0.5)
 
+
 def clear_strip():
-    for i in range(strip.numPixels()):
+    for i in range(NUM_PIXELS):
         strip.setPixelColor(i, Color(0, 0, 0))
     strip.show()
 
+
+RUN_MODE = {
+    "acceleration": simulate_acceleration,
+    "police": police_lights,
+    "chase": chase_mode,
+    "pit": pit_crew_mode,
+    "hazard": hazard_lights,
+    "off": off_mode
+}
+
+
 def run_mode():
     while True:
-        if current_mode == "acceleration":
-            simulate_acceleration()
-        elif current_mode == "police":
-            police_lights()
-        elif current_mode == "chase":
-            chase_mode()
-        elif current_mode == "pit":
-            pit_crew_mode()
-        elif current_mode == "hazard":
-            hazard_lights()
-        elif current_mode == "off":
-            off_mode()
-        else:
-            time.sleep(0.1)
+        try:
+            if RUN_MODE.get(current_mode):
+                RUN_MODE[current_mode]()
+        except Exception as e:
+            print(f"[run_mode] Something went wrong: {e}")
+        finally:
+            time.sleep(0.2)
+
 
 # === WebSocket Handler ===
 async def websocket_handler():
@@ -240,12 +263,13 @@ async def websocket_handler():
                 print("Connected to WebSocket.")
                 async for message in websocket:
                     print(f"Received: {message}")
-                    if message in ["off", "acceleration", "police", "pit", "chase", "hazard"]:
+                    if message in RUN_MODE.keys():
                         current_mode = message
                         clear_strip()
         except Exception as e:
             print(f"WebSocket error: {e}")
             await asyncio.sleep(5)
+
 
 async def send_data(message):
     if websocket:
@@ -254,6 +278,7 @@ async def send_data(message):
             print(f"Sent: {message}")
         except Exception as e:
             print(f"Error sending data: {e}")
+
 
 # === Main Async Runner ===
 async def main():
@@ -264,6 +289,7 @@ async def main():
         websocket_handler(),
         obd_handler()
     )
+
 
 if __name__ == "__main__":
     try:
