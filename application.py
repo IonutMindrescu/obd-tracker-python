@@ -26,7 +26,7 @@ strip.begin()
 NUM_PIXELS = strip.numPixels()
 
 # === Globals ===
-current_mode = "chase"
+current_mode = "police"
 websocket = None
 
 
@@ -255,16 +255,19 @@ def run_mode():
 
 # === WebSocket Handler ===
 async def websocket_handler():
-    global websocket, current_mode
+    #global websocket, current_mode
     while True:
         try:
             async with websockets.connect(WEBSOCKET_URL) as ws:
                 websocket = ws
                 print("Connected to WebSocket.")
+                
                 async for message in websocket:
-                    print(f"Received: {message}")
+                    message = message.decode("utf-8")
+                    #print(f"Received: {message}")
                     if message in RUN_MODE.keys():
                         current_mode = message
+                        print(f"Mode changed to: {current_mode}")
                         clear_strip()
         except Exception as e:
             print(f"WebSocket error: {e}")
