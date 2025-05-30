@@ -26,6 +26,7 @@ strip.begin()
 # === Globals ===
 current_mode = "chase"
 websocket = None
+throttle_ratio = 0.0  # Global variable to store the latest throttle position
 
 # === OBD-II Handler ===
 async def obd_handler():
@@ -48,6 +49,11 @@ async def obd_handler():
                 def callback_func(response):
                     if not response.is_null():
                         value = response.value
+                        val = getattr(value, "magnitude", 0.0)
+                        if cmd == obd.commands.THROTTLE_POS:
+                            global throttle_ratio
+                            throttle_ratio = float(val) / 100.0  # Normalize to 0.0 - 1.0 
+
                         data = {
                             "command": cmd.name,
                             "value": getattr(value, "magnitude", str(value))
@@ -119,23 +125,28 @@ def update_strip_acceleration(ratio):
         strip.setPixelColor(i, color if i < speed_leds else Color(0, 0, 0))
     strip.show()
 
-def simulate_acceleration():
-    speed_ratio = 1.0
-    direction = 1
+def realtime_acceleration():
     while current_mode == "acceleration":
-        target_ratio = random.uniform(0.3, 1.0) if direction == 1 else random.uniform(0.0, 0.7)
-        duration = random.uniform(1.5, 2.0)
-        steps = int(duration / 0.05)
-        delta = (target_ratio - speed_ratio) / steps
-        for _ in range(steps):
-            if current_mode != "acceleration":
-                return
-            speed_ratio = max(0.0, min(1.0, speed_ratio + delta))
-            update_strip_acceleration(speed_ratio)
-            time.sleep(0.05)
-        if random.random() < 0.4:
-            direction *= -1
-        time.sleep(random.uniform(0.2, 0.5))
+        update_strip_acceleration(throttle_ratio)
+        time.sleep(0.05)
+
+# def simulate_acceleration():
+#     speed_ratio = 1.0
+#     direction = 1
+#     while current_mode == "acceleration":
+#         target_ratio = random.uniform(0.3, 1.0) if direction == 1 else random.uniform(0.0, 0.7)
+#         duration = random.uniform(1.5, 2.0)
+#         steps = int(duration / 0.05)
+#         delta = (target_ratio - speed_ratio) / steps
+#         for _ in range(steps):
+#             if current_mode != "acceleration":
+#                 return
+#             speed_ratio = max(0.0, min(1.0, speed_ratio + delta))
+#             update_strip_acceleration(speed_ratio)
+#             time.sleep(0.05)
+#         if random.random() < 0.4:
+#             direction *= -1
+#         time.sleep(random.uniform(0.2, 0.5))
 
 def police_lights():
     half = strip.numPixels() // 2
@@ -216,7 +227,7 @@ def clear_strip():
 def run_mode():
     while True:
         if current_mode == "acceleration":
-            simulate_acceleration()
+            realtime_acceleration()
         elif current_mode == "police":
             police_lights()
         elif current_mode == "chase":
@@ -240,7 +251,7 @@ async def websocket_handler():
                 print("Connected to WebSocket.")
                 async for message in websocket:
                     message = message.decode("utf-8")
-                    print(f"Received: {message}")
+                    #print(f"Received: {message}")
                     if message in ["off", "acceleration", "police", "pit", "chase", "hazard"]:
                         current_mode = message
                         clear_strip()
@@ -252,7 +263,7 @@ async def send_data(message):
     if websocket:
         try:
             await websocket.send(message)
-            print(f"Sent: {message}")
+            #print(f"Sent: {message}")
         except Exception as e:
             print(f"Error sending data: {e}")
 
