@@ -239,6 +239,7 @@ async def websocket_handler():
                 websocket = ws
                 print("Connected to WebSocket.")
                 async for message in websocket:
+                    message = message.decode("utf-8")
                     print(f"Received: {message}")
                     if message in ["off", "acceleration", "police", "pit", "chase", "hazard"]:
                         current_mode = message
